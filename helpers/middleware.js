@@ -87,7 +87,11 @@ export const strategy = (req, _res, next) => {
 
   if (token) {
     try {
-      const data = JSON.parse(jwt.decode(token).data)
+      const dtoken=jwt.decode(token);
+      if(!dtoken){
+        next();
+      }
+      const data = JSON.parse(dtoken.data)
       let decoded = null;
       if (data.email) {
         decoded = data.role === 'auth' ? verifyAuthToken(token) : verifyPostingToken(token);

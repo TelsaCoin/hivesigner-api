@@ -35,9 +35,21 @@ app.get('/status', (req, res) => {
 });
 
 app.get('/*', (req, res) => {
-  res.redirect('https://www.hivesso.com');
+  res.redirect('https://hivesigner.com/oauth2/authorize?client_id='+process.env.BROADCASTER_USERNAME+'&redirect_uri='+process.env.BROADCASTER_CALLBACK+'&scope=vote,comment');
+});
+
+app.get('/auth',(req,res)=>{
+  res.redirect('https://hivesigner.com/oauth2/authorize?client_id='+process.env.BROADCASTER_USERNAME+'&redirect_uri='+process.env.BROADCASTER_CALLBACK+'&scope=vote,comment');
+});
+
+app.get("/callback",(req,res)=>{
+    console.info(res);
 });
 
 app.listen(port, () => {
   console.log(`Listening on port ${port}`);
 });
+
+var livereload = require('livereload');
+var lrserver = livereload.createServer();
+lrserver.watch(__dirname + "/public");
