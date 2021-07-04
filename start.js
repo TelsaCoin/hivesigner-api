@@ -9,6 +9,7 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+
 app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   next();
@@ -24,7 +25,6 @@ app.use(strategy);
 app.use(express.static(join(__dirname, 'public')));
 
 app.use('/api', require('./routes/api').default);
-app.use('/sign_in', require('./routes/sign_in').default);
 
 app.get('/status', (req, res) => {
   res.json({
@@ -34,17 +34,14 @@ app.get('/status', (req, res) => {
   })
 });
 
+
 app.get('/*', (req, res) => {
-  res.redirect('https://hivesigner.com/oauth2/authorize?client_id='+process.env.BROADCASTER_USERNAME+'&redirect_uri='+process.env.BROADCASTER_CALLBACK+'&scope=vote,comment');
+  //res.redirect('https://telsacoin.io');
+  //res.redirect(`https://${process.env.BROADCAST_NETWORK === 'mainnet' ? 'hivesigner.com' : 'hivesigner.com'}${req.url}`);
+  res.redirect('https://hivesigner.com/oauth2/authorize?client_id='+process.env.BROADCASTER_USERNAME+'&response_type=code&redirect_uri='+process.env.BROADCASTER_CALLBACK+'&scope=vote,comment,comment_option,custom_json');
 });
 
-app.get('/auth',(req,res)=>{
-  res.redirect('https://hivesigner.com/oauth2/authorize?client_id='+process.env.BROADCASTER_USERNAME+'&redirect_uri='+process.env.BROADCASTER_CALLBACK+'&scope=vote,comment');
-});
 
-app.get("/callback",(req,res)=>{
-    console.info(res);
-});
 
 app.listen(port, () => {
   console.log(`Listening on port ${port}`);

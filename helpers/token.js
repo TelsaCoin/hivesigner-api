@@ -1,80 +1,51 @@
-import { posting_token_expiration, auth_token_expiration } from '../config.json';
-const jwt = require('jsonwebtoken');
-const { promisify } = require("util");
-const redis = require("redis");
-const redisClient = redis.createClient({ url: process.env.USERS_REDIS_URL });
-const redisGet = promisify(redisClient.get).bind(redisClient);
-const redisSet = promisify(redisClient.set).bind(redisClient);
+import {
+  PublicKey, PrivateKey, cryptoUtils, Signature,
+} from '@hiveio/dhive';
+import client from './client';
+import { b64uEnc } from './utils';
 
-export const issuePostingToken = async (app, username, email) => {
-  const timestamp = parseInt(new Date().getTime() / 1000, 10)
-  const data = {
-    username: username,
-    app: app,
-    role: 'posting',
-    email: email,
-    timestamp: timestamp,
+export const issue = (app, author, type) => {
+  const message = {
+    signed_message: { type, app },
+    authors: [author],
+    timestamp: parseInt(new Date().getTime() / 1000, 10),
   };
-
-  const exp = timestamp + posting_token_expiration;
-  const token = jwt.sign({ data: JSON.stringify(data), exp: exp }, process.env.JWT_POSTING_SECRET_KEY)
-  return { token: token, exp: exp };
-};
-
-export const issuePostingCode = async (app, username, email) => {
-  await redisSet(email, username);
-
-  const timestamp = parseInt(new Date().getTime() / 1000, 10)
-  const data = {
-    username: username,
-    app: app,
-    role: 'code',
-    email: email,
-    timestamp: timestamp,
-  };
-
-  const exp = timestamp + posting_token_expiration;
-  const token = jwt.sign({ data: JSON.stringify(data), exp: exp }, process.env.JWT_POSTING_SECRET_KEY)
-  return { code: token, exp: exp };
+  const hash = cryptoUtils.sha256(JSON.stringify(message));
+  const privateKey = PrivateKey.fromString(process.env.BROADCASTER_POSTING_WIF);
+  const signature = privateKey.sign(hash).toString();
+  message.signatures = [signature];
+  return b64uEnc(JSON.stringify(message));
 };
 
 // eslint-disable-next-line consistent-return
-export const verifyPostingToken = (token) => {
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_POSTING_SECRET_KEY);
-    const userData = JSON.parse(decoded.data);
-    return userData;
-  }
-  catch(e) {
-    console.error(e);
-    return null;
-  };
-};
+export const verify = (message, username, signature, cb) => {
+  const hash = cryptoUtils.sha256(message);
 
-export const issueAuthToken = async (email, remoteAddress) => {
-  const timestamp = parseInt(new Date().getTime() / 1000, 10)
-  const data = {
-    email: email,
-    role: 'auth',
-    app: 'hive_sso',
-    address: remoteAddress,
-    timestamp: timestamp
+  const broadcasterPrivKey = PrivateKey.fromString(process.env.BROADCASTER_POSTING_WIF);
+  const broadcasterPubKey = broadcasterPrivKey.createPublic(process.env.BROADCASTER_NETWORK === 'mainnet' ? 'SMT' : 'TST');
+  if (broadcasterPubKey.verify(hash, Signature.fromString(signature))) {
+    return cb(null, true);
   }
-  const username = await redisGet(email);
-  const exp = timestamp + auth_token_expiration;
-  const token = jwt.sign({ data: JSON.stringify(data), exp: exp }, process.env.JWT_LOGIN_SECRET_KEY)
-  return { token: token, exp: exp, user: username };
-};
 
-// eslint-disable-next-line consistent-return
-export const verifyAuthToken = (token) => {
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_LOGIN_SECRET_KEY);
-    const userData = JSON.parse(decoded.data);
-    return userData;
-  }
-  catch(e) {
-    console.error(e);
-    return null;
-  };
+  client.database.getAccounts([username]).then((accounts) => {
+    let signatureIsValid = false;
+    if (accounts[0] && accounts[0].name) {
+      ['posting', 'active', 'owner'].forEach((type) => {
+        accounts[0][type].key_auths.forEach((key) => {
+          if (
+            !signatureIsValid
+            && PublicKey.fromString(key[0]).verify(hash, Signature.fromString(signature))
+          ) {
+            signatureIsValid = true;
+          }
+        });
+      });
+      cb(null, signatureIsValid);
+    } else {
+      cb('Request failed', null);
+    }
+  }).catch((e) => {
+    console.log('Get accounts failed', e);
+    cb(e, null);
+  });
 };

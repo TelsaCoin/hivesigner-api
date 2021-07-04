@@ -2,10 +2,11 @@ import { Router } from 'express';
 import { PrivateKey } from '@hiveio/dhive';
 import { authenticate, verifyPermissions } from '../helpers/middleware';
 import { getErrorMessage, isOperationAuthor } from '../helpers/utils';
-import { issuePostingCode, issuePostingToken } from '../helpers/token';
+import { issue } from '../helpers/token';
 import client from '../helpers/client';
-import { authorized_operations } from '../config.json';
-const { OAuth2Client } = require('google-auth-library'); 
+import cjson from '../config.json';
+
+const { authorized_operations, token_expiration } = cjson;
 
 const router = Router();
 const privateKey = PrivateKey.fromString(process.env.BROADCASTER_POSTING_WIF);
@@ -57,8 +58,8 @@ router.all('/me', authenticate(), async (req, res) => {
 });
 
 /** Broadcast transaction */
-router.post('/broadcast', authenticate('posting'), verifyPermissions('posting'), async (req, res) => {
-  const scope = req.scope;
+router.post('/broadcast', authenticate('app'), verifyPermissions, async (req, res) => {
+  const scope = req.scope.length ? req.scope : authorized_operations;
   const { operations } = req.body;
 
   let scopeIsValid = true;
@@ -88,25 +89,6 @@ router.post('/broadcast', authenticate('posting'), verifyPermissions('posting'),
         operation[1].required_posting_auths = [];
       }
     }
-    if (operation[0] === 'comment_options') {
-      if (operation[1].extensions === undefined) {
-        operation[1].extensions = []
-      } else {
-        operation[1].extensions.forEach((extension) => {
-          if (extension[1].beneficiaries) {
-            extension[1].beneficiaries.sort(function(a, b) {
-              if (a.account < b.account) return -1;
-              if (a.account > b.account) return 1;
-              return 0;
-            });
-          }
-        });
-      }
-      if (operation[1].percent_hbd === undefined) {
-        operation[1].percent_hbd = operation[1].percent_steem_dollars
-      }
-      operation[1].max_accepted_payout.replace("SBD", "HBD")
-    }
     if (operation[1].__config || operation[1].__rshares) {
       delete operation[1].__config;
       delete operation[1].__rshares;
@@ -124,16 +106,15 @@ router.post('/broadcast', authenticate('posting'), verifyPermissions('posting'),
       error_description: `This access_token allow you to broadcast transaction only for the account @${req.user}`,
     });
   } else {
-    console.log(new Date().toISOString(), `Broadcasted: operations ${JSON.stringify(operations)}`);
     client.broadcast.sendOperations(operations, privateKey)
       .then(
         (result) => {
-          console.log(new Date().toISOString(), client.currentAddress, `Broadcasted: success for @${req.user} from app @${req.proxy}, res - ${JSON.stringify(result)}`);
+          console.log(new Date().toISOString(), client.currentAddress, `Broadcasted: success for @${req.user} from app @${req.proxy}`);
           res.json({ result });
         },
         (err) => {
           console.log(
-            new Date().toISOString(), client.currentAddress, operations.toString(), 
+            new Date().toISOString(), client.currentAddress, operations.toString(),
             `Broadcasted: failed for @${req.user} from app @${req.proxy}`,
             JSON.stringify(req.body),
             JSON.stringify(err),
@@ -149,48 +130,18 @@ router.post('/broadcast', authenticate('posting'), verifyPermissions('posting'),
 });
 
 /** Request app access token */
-router.post('/oauth2/token', authenticate('code'), verifyPermissions('code'), async (req, res) => {
-  const { params } = req.body;
-  console.log(new Date().toISOString(), `Issue access tokens for user @${req.user} for @${req.proxy} app.`);
-
-  let data = null;
-  if (req.email) {
-    data = await issuePostingToken(req.proxy, req.user, req.email);
-  }
-
-  if (data) {
-    res.json({
-      access_token: data.token,
-      expires_at: data.exp,
-      username: req.user,
-    });
-  } else {
-    res.status(401).json({})
-  }
+router.all('/oauth2/token', authenticate(['code', 'refresh']), async (req, res) => {
+  console.log(new Date().toISOString(), client.currentAddress, `Issue tokens for user @${req.user} for @${req.proxy} app.`);
+  res.json({
+    access_token: issue(req.proxy, req.user, 'posting'),
+    refresh_token: issue(req.proxy, req.user, 'refresh'),
+    expires_in: token_expiration,
+    username: req.user,
+  });
 });
 
-/** Request app access offline code */
-router.post('/oauth2/code', authenticate('auth'), verifyPermissions('auth'), async (req, res) => {
-  let data = null;
-  console.log(new Date().toISOString(), `Issue access code for user @${req.user} for @${req.proxy} app.`);
-
-  if (req.email) {
-    data = await issuePostingCode(req.proxy, req.user, req.email);
-  }
-
-  if (data) {
-    res.json({
-      code: data.code,
-      expires_at: data.exp,
-      username: req.user,
-    });
-  } else {
-    res.status(401).json({})
-  }
-});
-
-/** Revoke app access offline code */
-router.all('/oauth2/code/revoke', authenticate('auth'), async (req, res) => {
+/** Revoke access token */
+router.all('/oauth2/token/revoke', authenticate('app'), async (req, res) => {
   res.json({ success: true });
 });
 
