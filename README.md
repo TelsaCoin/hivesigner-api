@@ -1,6 +1,6 @@
-# HiveSSO Posting API
+# DTOK Posting API
 
-A Node.js application over hivesigner for the Hive blockchain. Check it out on [www.hivesso.com](https://www.hivesso.com)
+A Node.js application over hivesigner for the Hive blockchain. Check it out on [www.telsacoin.io](https://www.telsacoin.io)
 
 # API
 
@@ -8,7 +8,7 @@ A Node.js application over hivesigner for the Hive blockchain. Check it out on [
 
 ```
 TYPE - Post
-URL - https://api.hivesso.com/api/aouth2/token
+URL - https://api.telsacoin.io/api/aouth2/token
 PARAMS - { "code": `access code`, "secret": `app secret`}
 ```
 
