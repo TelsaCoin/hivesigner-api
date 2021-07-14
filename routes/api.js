@@ -135,7 +135,7 @@ router.post('/get_discussions_by_blog',authenticate(), async (req, res) => {
   const scope = req.scope.length ? req.scope : authorized_operations;
   const { operations } = req.body;
   client.database
-    .getDiscussions('blog', operations)
+    .getDiscussions('blog', req.body)
     .then(result => {
         var posts = [];
         result.forEach(post => {
