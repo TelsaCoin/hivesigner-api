@@ -131,7 +131,64 @@ router.post('/broadcast', authenticate('app'), verifyPermissions, async (req, re
   }
 });
 
-router.post('/get_discussions_by_blog',authenticate(), async (req, res) => {
+//Get Posts
+//Query for the most recent posts having a specific tag, using a Hive filter
+// {
+//   "filters": "trending", such as hot, created, promoted
+//   "query":{
+//       "tag":"hiveio",
+//       "limit": 5
+//   }
+// }
+router.post('/get_posts_by_filters',authenticate(), async (req, res) => {
+  const scope = req.scope.length ? req.scope : authorized_operations;
+  const filters =req.body.filters;
+  const query=req.body.query;
+  client.database
+    .getDiscussions(filters, query)
+    .then(result => {
+        var posts = [];
+        result.forEach(post => {
+          const json = JSON.parse(post.json_metadata);
+          const image = json.image ? json.image[0] : '';
+          const title = post.title;
+          const author = post.author;
+          const created = new Date(post.created).toDateString();
+            posts.push(
+                {
+                  title,
+                  author,
+                  image,
+                  created
+                }
+            );
+        });
+
+        return res.json(result);
+    })
+    .catch(err => {
+      console.log(
+        new Date().toISOString(), client.currentAddress, filters,
+        `Broadcasted: failed for @${req.user} from app @${req.proxy}`,
+        JSON.stringify(req.body),
+        JSON.stringify(err),
+      );
+      res.status(500).json({
+        error: 'server_error',
+        error_description: getErrorMessage(err) || err.message || err,
+        response: err,
+      });
+    });
+});
+
+
+//Blog Feed
+//How to fetch most recent five posts from particular user on Hive.
+// {
+//   "tag": "hiveio",
+//   "limit": 5 
+// }
+router.post('/get_discussions_by_user',authenticate(), async (req, res) => {
   const scope = req.scope.length ? req.scope : authorized_operations;
   const { operations } = req.body;
   client.database
@@ -142,14 +199,23 @@ router.post('/get_discussions_by_blog',authenticate(), async (req, res) => {
             const json = JSON.parse(post.json_metadata);
             const image = json.image ? json.image[0] : '';
             const title = post.title;
+            const body=post.body;
+            const tags=json.tags ? json.tags : '';
             const author = post.author;
             const created = new Date(post.created).toDateString();
             posts.push(
-                `<div class="list-group-item"><h4 class="list-group-item-heading">${title}</h4><p>by ${author}</p><center><img src="${image}" class="img-responsive center-block" style="max-width: 450px"/></center><p class="list-group-item-text text-right text-nowrap">${created}</p></div>`
+                {
+                  title,
+                  body,
+                  tags,
+                  author,
+                  image,
+                  created
+                }
             );
         });
 
-        return res.json({posts:posts.join('')});
+        return res.json(result);
     })
     .catch(err => {
       console.log(
